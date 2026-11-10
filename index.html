@@ -77,30 +77,104 @@ footer{text-align:center;color:#b27c91;font-size:13px;padding:18px 0}.float{posi
 
 <section class="section">
 <h2>♡ รีวิวจากลูกค้า</h2>
-<div id="reviews" class="reviews"></div>
-</section>
+<div id="reviews" class="reviews"></div><script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+  import { 
+    getFirestore, 
+    collection, 
+    addDoc, 
+    onSnapshot, 
+    query, 
+    orderBy, 
+    serverTimestamp 
+  } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-<footer>made with love by Jam Mo ♡ · thank you for your support ✿</footer>
-</main>
+  // ตั้งค่า Firebase โปรเจกต์ jammo-review ของคุณ
+  const firebaseConfig = {
+    apiKey: "AIzaSyA78A8GYjizANEP34f511jP74ekT",
+    authDomain: "jammo-review.firebaseapp.com",
+    projectId: "jammo-review",
+    storageBucket: "jammo-review.firebasestorage.app",
+    messagingSenderId: "837601697353",
+    appId: "1:837601697353:web:a114382e34b9ee0",
+    measurementId: "G-TP0JG9LYS4"
+  };
 
-<script>
-const stars=[...document.querySelectorAll('.stars button')];let selectedRating=0;
-stars.forEach(btn=>btn.addEventListener('click',()=>{selectedRating=Number(btn.dataset.value);stars.forEach(s=>{const a=Number(s.dataset.value)<=selectedRating;s.textContent=a?'★':'☆';s.classList.toggle('selected',a)});document.getElementById('ratingResult').textContent=`ให้ ${selectedRating} ดาวแล้ว ขอบคุณมากนะคะ ♡`}));
-function getReviews(){try{return JSON.parse(localStorage.getItem('jammo-reviews')||'[]')}catch(e){return []}}
-function saveReviews(list){try{localStorage.setItem('jammo-reviews',JSON.stringify(list))}catch(e){}}
-function addReview(){
-const name=document.getElementById('reviewName').value.trim()||'ผู้รีวิว';const text=document.getElementById('reviewText').value.trim();
-if(!selectedRating){alert('กรุณาเลือกคะแนนก่อนนะคะ ♡');return}if(!text){alert('กรุณาพิมพ์ข้อความรีวิวก่อนนะคะ ♡');return}
-const list=getReviews();list.unshift({name,text,rating:selectedRating,date:new Date().toLocaleDateString('th-TH')});saveReviews(list);
-document.getElementById('reviewName').value='';document.getElementById('reviewText').value='';selectedRating=0;
-stars.forEach(s=>{s.textContent='☆';s.classList.remove('selected')});document.getElementById('ratingResult').textContent='ส่งรีวิวเรียบร้อยแล้ว ขอบคุณนะคะ ♡';renderReviews()}
-function renderReviews(){
-const list=getReviews();document.getElementById('reviewCount').textContent=`${list.length} รีวิว`;
-const avg=list.length?(list.reduce((a,r)=>a+r.rating,0)/list.length).toFixed(1):'—';document.getElementById('averageRating').textContent=`${avg} / 5`;
-const box=document.getElementById('reviews');if(!list.length){box.innerHTML='<div class="empty">ยังไม่มีรีวิว · มาเป็นคนแรกที่รีวิวให้ Jam Mo ได้นะคะ ♡</div>';return}
-box.innerHTML=list.map(r=>`<article class="review"><div class="review-top"><span class="review-name">♡ ${escapeHTML(r.name)}</span><span class="review-stars">${'★'.repeat(r.rating)}${'☆'.repeat(5-r.rating)}</span></div><div class="review-text">${escapeHTML(r.text)}</div><div class="note">${escapeHTML(r.date)}</div></article>`).join('')}
-function escapeHTML(str){return str.replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
-renderReviews();
-</script>
-</body>
-</html>
+  // เริ่มต้นใช้งาน Firebase
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+
+  const reviewForm = document.getElementById('reviewForm') || document.querySelector('form');
+  const reviewsList = document.getElementById('reviews') || document.getElementById('reviewsList');
+
+  // 1. ดึงข้อมูลรีวิวมาแสดงแบบ Real-time
+  if (reviewsList) {
+    const reviewsRef = collection(db, 'reviews');
+    const q = query(reviewsRef, orderBy('createdAt', 'desc'));
+
+    onSnapshot(q, (snapshot) => {
+      if (snapshot.empty) {
+        reviewsList.innerHTML = '<p>ยังไม่มีรีวิว เป็นคนแรกที่เขียนรีวิวเลย!</p>';
+        return;
+      }
+
+      let html = '';
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        const stars = '⭐'.repeat(data.rating || 5);
+        const dateStr = data.createdAt ? new Date(data.createdAt.seconds * 1000).toLocaleDateString('th-TH') : 'เมื่อสักครู่';
+
+        html += `
+          <article class="review-item" style="border-bottom: 1px solid #eee; padding: 12px 0; margin-bottom: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <strong>${escapeHtml(data.name)}</strong>
+              <span style="color: #fbbc04;">${stars}</span>
+            </div>
+            <p style="margin: 6px 0; color: #333;">${escapeHtml(data.text)}</p>
+            <small style="color: #888;">${dateStr}</small>
+          </article>
+        `;
+      });
+      reviewsList.innerHTML = html;
+    });
+  }
+
+  // 2. ฟังก์ชันส่งรีวิวเข้า Firebase
+  if (reviewForm) {
+    reviewForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const nameInput = document.getElementById('reviewName') || document.getElementById('name');
+      const ratingInput = document.getElementById('rating') || document.querySelector('[name="rating"]');
+      const textInput = document.getElementById('reviewText') || document.getElementById('text');
+
+      if (!nameInput || !textInput) {
+        alert('กรุณากรอกข้อมูลให้ครบถ้วน');
+        return;
+      }
+
+      try {
+        await addDoc(collection(db, 'reviews'), {
+          name: nameInput.value.trim(),
+          rating: ratingInput ? parseInt(ratingInput.value) : 5,
+          text: textInput.value.trim(),
+          createdAt: serverTimestamp()
+        });
+
+        reviewForm.reset();
+        alert('ส่งรีวิวเรียบร้อยแล้ว ขอบคุณครับ!');
+      } catch (error) {
+        console.error("Error adding review: ", error);
+        alert('เกิดข้อผิดพลาดในการส่งรีวิว กรุณาลองใหม่อีกครั้ง');
+      }
+    });
+  }
+
+  function escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/[&<>"']/g, function(m) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[m];
+    });
+  }
+    </script>
+    
