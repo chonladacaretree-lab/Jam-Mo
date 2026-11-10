@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>แจม-โม (Jam Mo) - รีวิว</title>
+  <style>
+    * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    body { background-color: #f4f6f8; margin: 0; padding: 20px; color: #333; }
+    .wrap { max-width: 600px; margin: 0 auto; }
+    .section { background: #fff; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 20px; }
+    h1, h2 { color: #1a73e8; margin-top: 0; }
+    .form-group { margin-bottom: 15px; }
+    label { display: block; margin-bottom: 5px; font-weight: bold; }
+    input[type="text"], textarea { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; }
+    textarea { height: 80px; resize: vertical; }
+    
+    .star-rating { display: flex; gap: 8px; font-size: 28px; cursor: pointer; margin-bottom: 10px; }
+    .star-rating span { color: #ccc; transition: color 0.2s; }
+    .star-rating span.active { color: #fbbc04; }
+
+    button.btn-submit { background-color: #1a73e8; color: white; border: none; padding: 12px; border-radius: 6px; cursor: pointer; font-size: 16px; width: 100%; font-weight: bold; }
+    button.btn-submit:hover { background-color: #1557b0; }
+    
+    .review-item { border-bottom: 1px solid #eee; padding: 12px 0; }
+    .review-item:last-child { border-bottom: none; }
+    .review-header { display: flex; justify-content: space-between; align-items: center; }
+    .reviewer-name { font-weight: bold; }
+    .stars { color: #fbbc04; }
+    .review-text { margin: 6px 0; color: #444; }
+    .review-date { font-size: 12px; color: #888; }
+  </style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="section" style="text-align: center;">
+    <h1>แจม-โม (Jam Mo)</h1>
+    <p>แหล่งซื้อขายของออนไลน์ & รีวิวจากลูกค้าจริง</p>
+  </div>
+
+  <div class="section">
+    <h2>รีวิวให้ Jam Mo</h2>
+    <form id="reviewForm">
+      <div class="form-group">
+        <label for="reviewName">ชื่อของคุณ</label>
+        <input type="text" id="reviewName" placeholder="ใส่ชื่อของคุณ" required maxlength="30">
+      </div>
+      
+      <div class="form-group">
+        <label>เลือกคะแนน (1-5 ดาว)</label>
+        <div class="star-rating" id="starRating">
+          <span data-value="1">★</span>
+          <span data-value="2">★</span>
+          <span data-value="3">★</span>
+          <span data-value="4">★</span>
+          <span data-value="5" class="active">★</span>
+        </div>
+        <input type="hidden" id="selectedRating" value="5">
+      </div>
+
+      <div class="form-group">
+        <label for="reviewText">ข้อความรีวิว</label>
+        <textarea id="reviewText" placeholder="พิมพ์ข้อความรีวิวของคุณที่นี่..." required maxlength="500"></textarea>
+      </div>
+
+      <button type="submit" id="submitBtn" class="btn-submit">ส่งรีวิว</button>
+    </form>
+  </div>
+
+  <div class="section">
+    <h2>รีวิวจากลูกค้าทั้งหมด</h2>
+    <div id="reviewsList">กำลังโหลดข้อมูลรีวิว...</div>
+  </div>
+</div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+  import { 
+    getFirestore, 
+    collection, 
+    addDoc, 
+    onSnapshot, 
+    query, 
+    orderBy, 
+    serverTimestamp 
+  } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyA78A8GYjizANEP34f511jP74ekT",
+    authDomain: "jammo-review.firebaseapp.com",
+    projectId: "jammo-review",
+    storageBucket: "jammo-review.firebasestorage.app",
+    messagingSenderId: "837601697353",
+    appId: "1:837601697353:web:a114382e34b9ee0",
+    measurementId: "G-TP0JG9LYS4"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+
+  const starsContainer = document.getElementById('starRating');
+  const ratingInput = document.getElementById('selectedRating');
+  const stars = starsContainer.querySelectorAll('span');
+
+  stars.forEach(star => {
+    star.addEventListener('click', () => {
+      const val = parseInt(star.getAttribute('data-value'));
+      ratingInput.value = val;
+      stars.forEach((s, idx) => {
+        if (idx < val) {
+          s.classList.add('active');
+        } else {
+          s.classList.remove('active');
+        }
+      });
+    });
+  });
+
+  const reviewsList = document.getElementById('reviewsList');
+  const q = query(collection(db, 'reviews'), orderBy('createdAt', 'desc'));
+
+  onSnapshot(q, (snapshot) => {
+    if (snapshot.empty) {
+      reviewsList.innerHTML = '<p>ยังไม่มีรีวิว เป็นคนแรกที่เขียนรีวิวเลย!</p>';
+      return;
+    }
+
+    let html = '';
+    snapshot.forEach((doc) => {
+      const data = doc.data();
+      const rating = data.rating || 5;
+      const starStr = '★'.repeat(rating) + '☆'.repeat(5 - rating);
+      const dateStr = data.createdAt ? new Date(data.createdAt.seconds * 1000).toLocaleDateString('th-TH') : 'เมื่อสักครู่';
+
+      html += `
+        <div class="review-item">
+          <div class="review-header">
+            <span class="reviewer-name">${escapeHtml(data.name)}</span>
+            <span class="stars">${starStr}</span>
+          </div>
+          <p class="review-text">${escapeHtml(data.text)}</p>
+          <span class="review-date">${dateStr}</span>
+        </div>
+      `;
+    });
+    reviewsList.innerHTML = html;
+  });
+
+  const reviewForm = document.getElementById('reviewForm');
+  const submitBtn = document.getElementById('submitBtn');
+
+  reviewForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    submitBtn.disabled = true;
+    submitBtn.innerText = 'กำลังส่ง...';
+
+    const name = document.getElementById('reviewName').value.trim();
+    const rating = parseInt(ratingInput.value);
+    const text = document.getElementById('reviewText').value.trim();
+
+    try {
+      await addDoc(collection(db, 'reviews'), {
+        name: name,
+        rating: rating,
+        text: text,
+        createdAt: serverTimestamp()
+      });
+
+      reviewForm.reset();
+      ratingInput.value = 5;
+      stars.forEach(s => s.classList.add('active'));
+      alert('ส่งรีวิวเรียบร้อยแล้ว ขอบคุณครับ!');
+    } catch (error) {
+      console.error("Error adding review: ", error);
+      alert('เกิดข้อผิดพลาดในการส่งรีวิว กรุณาลองใหม่อีกครั้ง');
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.innerText = 'ส่งรีวิว';
+    }
+  });
+
+  function escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/[&<>"']/g, function(m) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[m];
+    });
+  }
+</script>
+
+</body>
+</html>
